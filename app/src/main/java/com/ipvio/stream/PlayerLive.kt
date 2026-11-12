@@ -171,17 +171,24 @@ fun ChannelOverlay(
     // Own channel lists (created in the Live TV area with the menu key)
     val myLists = ChannelLists.lists.toList()
     val curList = ChannelLists.byKey(chanCat)
-    val chanList = remember(chanCat, favItems, liveAll, curList, curList?.ids?.size, groups) {
+    var openGroup by remember(chanCat) { mutableStateOf<String?>(null) }
+    val chanList = remember(chanCat, favItems, liveAll, curList, curList?.ids?.size, groups, openGroup) {
         when {
             chanCat == FAV_CAT -> favItems
             chanCat == "ALL" -> liveAll
-            curList != null -> ChannelListLogic.resolve(curList, byId)
+            curList != null -> if(openGroup==null) emptyList() else ChannelListLogic.members(curList,openGroup!!,liveAll)
             else -> groups[chanCat].orEmpty()
         }
     }
+    val lineupFocus=remember { FocusRequester() }
     val startIdx = remember(chanList, curId) { chanList.indexOfFirst { it.id == curId } }
     val ls = rememberLazyListState()
-    LaunchedEffect(chanCat) { ls.scrollToItem(maxOf(startIdx - 2, 0)) }
+    LaunchedEffect(chanCat,openGroup) {
+        ls.scrollToItem(maxOf(startIdx - 2, 0))
+        kotlinx.coroutines.delay(150)
+        if(curList!=null && openGroup==null) runCatching { lineupFocus.requestFocus() }
+        else if(openGroup!=null && chanList.isNotEmpty()) runCatching { chanFocus.requestFocus() }
+    }
     val fc = focusedCh ?: curItem
     // Program of the highlighted channel: only after a short pause and not while Up/Down is held (before, every step started a request)
     val fe by produceState(emptyList<EpgEntry>(), fc?.id) {
@@ -214,7 +221,7 @@ fun ChannelOverlay(
                     }
                     items(myLists) { l ->
                         val k = ChannelListLogic.key(l)
-                        PCatRow(l.name, ChannelListLogic.resolve(l, byId).size, chanCat == k, false, if (chanCat == k) Modifier.focusRequester(catsFocus) else Modifier, null, { onChanCat(k) }, icon = AIcon.Lists, raw = true) { onShowCats(false) }
+                        PCatRow(l.name, l.groups.size + (if(l.ids.isEmpty()) 0 else 1), chanCat == k, false, if (chanCat == k) Modifier.focusRequester(catsFocus) else Modifier, null, { onChanCat(k) }, icon = AIcon.Lists, raw = true) { onShowCats(false) }
                     }
                     item {
                         PCatRow("Alle Sender", liveAll.size, chanCat == "ALL", false, if (chanCat == "ALL") Modifier.focusRequester(catsFocus) else Modifier, null, { onChanCat("ALL") }) { onShowCats(false) }
@@ -242,6 +249,18 @@ fun ChannelOverlay(
                 Color.White, 24.sp, FontWeight.ExtraBold, iconSize = 22.dp, iconTint = if (chanCat == FAV_CAT) PT.Gold else Color.White,
                 raw = curList != null
             )
+            if(curList!=null) {
+                if(openGroup!=null) PillButton("Back to lineup groups",icon=AIcon.Left) { openGroup=null }
+                else {
+                    Text(raw=true,text="Open a group",color=Muted,fontSize=14.sp)
+                    LazyColumn {
+                        itemsIndexed(curList.groups) { index,g ->
+                            PCatRow(g.name,ChannelListLogic.members(curList,g.key,liveAll).size,false,false,if(index==0) Modifier.focusRequester(lineupFocus) else Modifier,null,{},icon=AIcon.Lists,raw=true) { openGroup=g.key }
+                        }
+                        if(curList.ids.isNotEmpty()) item { PCatRow("Individual channels",curList.ids.size,false,false,if(curList.groups.isEmpty()) Modifier.focusRequester(lineupFocus) else Modifier,null,{},icon=AIcon.Star,raw=true) { openGroup="#individual" } }
+                    }
+                }
+            }
             val headerItems = listOf("ALL", FAV_CAT) + myLists.map { ChannelListLogic.key(it) } + favCats
             LazyRow(Modifier.onFocusChanged { onInHeader(it.hasFocus) }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(headerItems) { index, name ->
@@ -250,7 +269,7 @@ fun ChannelOverlay(
                         if (name == "ALL") "Alle" else if (name == FAV_CAT) "Favoriten" else hl?.name ?: name, chanCat == name,
                         (if (name == chanCat) Modifier.focusRequester(headerFocus) else Modifier).onPreviewKeyEvent { ev ->
                             if (ev.type != KeyEventType.KeyDown) false
-                            else if (ev.key == Key.DirectionDown) { runCatching { chanFocus.requestFocus() }; true }
+                            else if (ev.key == Key.DirectionDown) { runCatching { (if(curList!=null && openGroup==null) lineupFocus else chanFocus).requestFocus() }; true }
                             else if (index == 0 && ev.key == Key.DirectionLeft) { onShowCats(true); true }
                             else if (index == headerItems.lastIndex && ev.key == Key.DirectionRight) { onClose(); true }
                             else false

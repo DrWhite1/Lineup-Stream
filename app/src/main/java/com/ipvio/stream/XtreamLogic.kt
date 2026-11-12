@@ -75,6 +75,7 @@ object XtreamLogic {
         attr(f["epg_channel_id"]).takeIf { it.isNotEmpty() }?.let { sb.append(" tvg-id=\"").append(it).append('"') }
         attr(f["stream_icon"]).takeIf { it.startsWith("http") }?.let { sb.append(" tvg-logo=\"").append(it).append('"') }
         sb.append(" group-title=\"").append(attr(group(f, cats))).append('"')
+        f["category_id"]?.trim()?.takeIf { it.isNotEmpty() }?.let { sb.append(" lineup-group-id=\"").append(attr(it)).append('"') }
         if (f["tv_archive"]?.trim() == "1") {
             val d = f["tv_archive_duration"]?.trim()?.toIntOrNull()?.takeIf { it > 0 }
             sb.append(" catchup=\"xc\"")
@@ -94,6 +95,7 @@ object XtreamLogic {
         val sb = StringBuilder(160).append("#EXTINF:-1")
         attr(f["stream_icon"]).takeIf { it.startsWith("http") }?.let { sb.append(" tvg-logo=\"").append(it).append('"') }
         sb.append(" group-title=\"").append(attr(group(f, cats))).append('"')
+        f["category_id"]?.trim()?.takeIf { it.isNotEmpty() }?.let { sb.append(" lineup-group-id=\"").append(attr(it)).append('"') }
         return sb.append(',').append(n).append('\n').append(movieUrl(a, id, f["container_extension"])).toString()
     }
 

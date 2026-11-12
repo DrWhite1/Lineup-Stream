@@ -565,7 +565,7 @@ object PlaylistStore {
         StalkerLogic.parse(u)?.let { return downloadStalker(c, u, it) }
         val acct = XtreamLogic.fromUrl(u) ?: return downloadList(c, u)
         // If get.php has already failed once for this login, use the API right away
-        if (useApi(c, u)) return downloadApi(c, u, acct)
+        if (useApi(c, u) || XtreamLogic.fromUrl(u) != null) return downloadApi(c, u, acct)
         val got = try {
             downloadList(c, u)
         } catch (e: PlaylistError) {

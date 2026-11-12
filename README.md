@@ -1,3 +1,13 @@
+# Lineup Stream - independent IPVIO fork
+
+Experimental personal fork with named, openable synced-group lineups. **Not an official IPVIO release.**
+
+See [fork features and controls](FORK.md), [evaluation and device acceptance checklist](docs/FORK-EVALUATION.md), and the original GPL license and notices below. Fork builds use a separate app identity and original icon. Download this fork only from this repository's Releases, not the upstream link in the historical README below.
+
+---
+
+## Original upstream README (retained for attribution and feature context)
+
 # IPVIO Stream
 
 DOWNLOADER CODE: 4200542

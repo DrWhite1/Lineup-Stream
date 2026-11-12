@@ -14,7 +14,7 @@ import java.io.OutputStream
  * Version 4 (whole list, language at the front of each entry) and 3 (without language) are still read.
  */
 object PlaylistCacheIO {
-    const val VERSION = 5
+    const val VERSION = 6
     private const val MAX_STR = 1 shl 20      // 1 MB per text: anything larger can only be a corrupt file
     private const val MAX_COUNT = 2_000_000
 
@@ -57,7 +57,7 @@ object PlaylistCacheIO {
 
     private fun DataInputStream.head(url: String): Head? {
         val version = readInt()
-        if (version !in 3..5) return null
+        if (version !in 3..6) return null
         if (str() != url.trim()) return null
         val ne = count()
         val epg = ArrayList<String>(ne)
@@ -137,7 +137,7 @@ object PlaylistCacheIO {
 
     private fun DataOutputStream.item(i: Item) {
         str(i.id); writeInt(i.kind.ordinal); str(i.lang); str(i.title); writeInt(i.year ?: -1); str(i.url); str(i.logo); str(i.group)
-        str(i.quality); str(i.tvgId)
+        str(i.quality); str(i.tvgId); str(i.providerGroupId)
         writeInt(i.episodes.size)
         for (e in i.episodes) {
             writeInt(e.season); writeInt(e.num); str(e.title); str(e.url); str(e.quality)
@@ -153,7 +153,7 @@ object PlaylistCacheIO {
         var lang: String? = if (version >= 4) pool.of(str() ?: LangTagLogic.UNKNOWN) else null
         if (lang != null) {
             counts[lang] = (counts[lang] ?: 0) + 1
-            if (LangTagLogic.hides(hidden, lang, kind)) { skipItemRest(); return null }
+            if (LangTagLogic.hides(hidden, lang, kind)) { skipItemRest(version); return null }
         }
         // Older caches: titles still with "&amp;" or "|EN|" – clean up while reading (fast, mostly unchanged)
         val rawTitle = str() ?: ""
@@ -164,6 +164,7 @@ object PlaylistCacheIO {
         val group = pool.of(str() ?: "")
         val quality = pool.ofOrNull(str())
         val tvg = str()
+        val providerGroup = if(version >= 6) str() else null
         val n = count()
         val eps = ArrayList<Episode>(n)
         for (k in 0 until n) {
@@ -186,12 +187,13 @@ object PlaylistCacheIO {
         }
         return Item(
             id = id, kind = kind, title = title, year = if (y < 0) null else y, url = url, logo = logo,
-            group = group, episodes = EpisodeTable.of(eps, pool), quality = quality, tvgId = tvg, lang = lang
+            group = group, episodes = EpisodeTable.of(eps, pool), quality = quality, tvgId = tvg, lang = lang, providerGroupId = providerGroup
         )
     }
 
-    private fun DataInputStream.skipItemRest() {
+    private fun DataInputStream.skipItemRest(version: Int) {
         skipStr(); readInt(); skipStr(); skipStr(); skipStr(); skipStr(); skipStr()   // title, year, URL, logo, category, quality, tvg-id
+        if(version >= 6) skipStr()
         val n = count()
         for (k in 0 until n) {
             readInt(); readInt(); skipStr(); skipStr(); skipStr()

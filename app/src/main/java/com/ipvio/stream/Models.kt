@@ -130,10 +130,13 @@ data class Item(
     /** Language according to the provider's tag (abbreviation from [LangTagLogic], "?" = no tag). */
     val lang: String = LangTagLogic.UNKNOWN,
     /** Source with several playlists shown at once: 0 = main playlist, 1 … = further ones (see [MultiLogic]). */
-    val src: Int = 0
+    val src: Int = 0,
+    /** Stable provider category identity for synced lineups, not its display name. */
+    val providerGroupId: String? = null
 ) {
     // Key for the metadata cache: computed once per title instead of anew on every sort comparison.
     // Own field instead of "by lazy": saves two helper objects per title with 100,000+ titles.
+    internal var lineupGroupCache: String? = null
     private var mkCache: String? = null
     val mk: String get() = mkCache ?: (kind.name + "|" + title.lowercase() + "|" + (year ?: 0)).also { mkCache = it }
 }
@@ -464,7 +467,7 @@ object M3uParser {
                     val id = e.url.hashCode().toString()
                     out.add(Item(id, Kind.LIVE, TitleText.decode(e.name), null, e.url,
                         attr(e.info, "tvg-logo")?.ifBlank { null }, group, quality = q,
-                        tvgId = attr(e.info, "tvg-id")?.ifBlank { null }, lang = kd.lang))
+                        tvgId = attr(e.info, "tvg-id")?.ifBlank { null }, lang = kd.lang, providerGroupId = attr(e.info, "lineup-group-id")?.ifBlank { null }))
                     CatchupLogic.fromInfo(e.info, e.url, headCu)?.let { catchup[id] = it }
                 }
             }

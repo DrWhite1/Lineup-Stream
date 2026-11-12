@@ -248,7 +248,7 @@ class XtreamApi(private val client: OkHttpClient, private val ua: String) {
                 val count = try { f.get() } catch (e: java.util.concurrent.ExecutionException) {
                     val c = e.cause
                     // Only a network problem of the parallel request is tried again one by one; abort and login errors pass on
-                    if (c is IOException) fill(file, tmp, again) else throw (c ?: e)
+                    if (c is IOException || c is PlaylistError) fill(file, tmp, again) else throw (c ?: e)
                 }
                 // From here the same characters are counted as part of the list: no longer count them as temporary
                 onTempBytes(-tmp.getAndSet(0))

@@ -1400,8 +1400,8 @@ private fun ApiKeysPage(ctx: Context) {
 
 @Composable
 private fun AboutPage(ctx: Context) {
-    Text("IPVIO Stream · Version " + appVersion(ctx), color = Color.White, fontSize = 18.sp)
-    Hint("IPVIO Stream ist ein Player und liefert selbst keine Inhalte. Nutze nur Quellen, für die du eine Berechtigung hast.")
+    Text("Lineup Stream · Version " + appVersion(ctx), color = Color.White, fontSize = 18.sp)
+    Hint("Lineup Stream (IPVIO fork) ist ein Player und liefert selbst keine Inhalte. Nutze nur Quellen, für die du eine Berechtigung hast.")
     Hint("Dieses Produkt verwendet die TMDB-API, wird aber nicht von TMDB unterstützt oder zertifiziert. Wertungen: OMDb. Intro-Zeiten: TheIntroDB.")
     Hint("IPVIO Stream ist freie Software unter der GNU General Public License v3 (GPL-3.0). Verwendete Bibliotheken: AndroidX/Jetpack Compose, Media3 (Apache 2.0), OkHttp, Coil (Apache 2.0), Jellyfin FFmpeg-Decoder (GPL-3.0), Schriften Outfit und Inter (SIL Open Font License).")
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

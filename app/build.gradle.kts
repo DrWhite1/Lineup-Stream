@@ -32,14 +32,14 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ipvio.stream"
+        applicationId = "be.jeroen.lineupstream"
         minSdk = 24
         targetSdk = 37
         // Raise both for every release; the GitHub release tag must match versionName (e.g. tag "v1.1").
-        versionCode = 6
-        versionName = "1.4.1"
+        versionCode = 7
+        versionName = "0.2.0"
         // Name under the icon; the debug build overrides it (see buildTypes)
-        manifestPlaceholders["appLabel"] = "IPVIO Stream"
+        manifestPlaceholders["appLabel"] = "Lineup Stream"
 
         buildConfigField("String", "TMDB_KEY", "\"${secret("TMDB_KEY")}\"")
         buildConfigField("String", "OMDB_KEY", "\"${secret("OMDB_KEY")}\"")
@@ -61,7 +61,7 @@ android {
         // is not overwritten. Both apps can be installed side by side (own data, own name).
         debug {
             applicationIdSuffix = ".test"
-            manifestPlaceholders["appLabel"] = "IPVIO Stream"
+            manifestPlaceholders["appLabel"] = "Lineup Stream"
         }
         release {
             if (hasKeystore) signingConfig = signingConfigs.getByName("release")
@@ -87,6 +87,7 @@ android {
         buildConfig = true
     }
 
+    testOptions { unitTests.isIncludeAndroidResources = true; unitTests.all { it.maxHeapSize = "384m" } }
     lint {
         disable += "UnsafeOptInUsageError"
     }
@@ -112,6 +113,11 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Real JSON implementation for JVM unit tests (the Android android.jar only has stubs that throw).
     // Needed by ListImportLogic.parseTrakt, which swallows the stub exception and returns an empty list.
     testImplementation("org.json:json:20250517")

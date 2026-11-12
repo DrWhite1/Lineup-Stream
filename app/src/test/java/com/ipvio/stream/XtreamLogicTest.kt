@@ -33,7 +33,7 @@ class XtreamLogicTest {
     @Test fun liveEntryWithCatchup() {
         val e = XtreamLogic.liveEntry(a, mapOf("stream_id" to "5", "name" to "Sport, HD", "epg_channel_id" to "sp.de",
             "stream_icon" to "http://i/x.png", "category_id" to "3", "tv_archive" to "1", "tv_archive_duration" to "7"), mapOf("3" to "DE | Sport"))!!
-        assertTrue(e.startsWith("#EXTINF:-1 tvg-id=\"sp.de\" tvg-logo=\"http://i/x.png\" group-title=\"DE | Sport\" catchup=\"xc\" catchup-days=\"7\","))
+        assertTrue(e.startsWith("#EXTINF:-1 tvg-id=\"sp.de\" tvg-logo=\"http://i/x.png\" group-title=\"DE | Sport\" lineup-group-id=\"3\" catchup=\"xc\" catchup-days=\"7\","))
         assertTrue(e.contains(",Sport‚ HD\n"))
         assertTrue(e.endsWith("/live/user/pa%20ss%261/5.ts"))
         assertNull(XtreamLogic.liveEntry(a, mapOf("name" to "x"), emptyMap()))
@@ -66,6 +66,7 @@ class XtreamLogicTest {
         assertEquals(3, p.items.size)
         val live = p.items.first { it.kind == Kind.LIVE }
         assertEquals("Das Erste", live.title)
+        assertEquals("1",live.providerGroupId)
         val movie = p.items.first { it.kind == Kind.MOVIE }
         assertEquals(2021, movie.year)
         val ser = p.items.first { it.kind == Kind.SERIES }

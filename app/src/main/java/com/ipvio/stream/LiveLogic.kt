@@ -4,10 +4,12 @@ package com.ipvio.stream
 const val FAV_CAT = "#FAV"
 
 /** Own channel list: name and channels in own order (channel IDs as with the favorites). */
-data class ChList(val id: Int, val name: String, val ids: List<String>)
+data class GroupRule(val key: String, val name: String)
+data class ChList(val id: Int, val name: String, val ids: List<String>, val groups: List<GroupRule> = emptyList())
 
 /** Create, fill and sort own channel lists (without Android, testable). */
 object ChannelListLogic {
+    private val sourceScopes=java.util.concurrent.ConcurrentHashMap<String,String>()
     const val MAX_NAME = 40
     /** Key of a list in the category selection (next to favorites and "ALL"). */
     const val PREFIX = "L:"
@@ -49,18 +51,43 @@ object ChannelListLogic {
     }
 
     /** Channels of the list in its order; ones that no longer exist are skipped. */
-    fun <T> resolve(l: ChList, byId: Map<String, T>): List<T> = l.ids.mapNotNull { byId[it] }
+    fun <T> resolve(l: ChList, byId: Map<String, T>): List<T> {
+        val individual=l.ids.mapNotNull { byId[it] }
+        if(l.groups.isEmpty()) return individual
+        val keys=l.groups.map { it.key }.toHashSet()
+        val matched=byId.values.filter { it is Item && groupKey(it) in keys }
+        return (individual+matched).distinct()
+    }
+    /** Provider + username scopes identical category IDs without storing a password in rules. */
+    fun groupKey(item: Item): String {
+        item.lineupGroupCache?.let { return it }
+        val u=runCatching { java.net.URI(item.url) }.getOrNull()
+        val path=u?.rawPath.orEmpty()
+        val marker=path.lastIndexOf("/live/")
+        val basePath=if(marker>=0) path.substring(0,marker) else ""
+        val user=if(marker>=0) path.substring(marker+6).substringBefore('/') else "m3u"
+        val identity=(u?.scheme.orEmpty()+"://"+u?.rawAuthority.orEmpty()+basePath+"/"+user)
+        val scope=sourceScopes.getOrPut(identity) { java.security.MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString("") { "%02x".format(it) }.take(24) }
+        return (scope+":"+(item.providerGroupId?.let { "id:$it" } ?: "name:${item.group}")).also { item.lineupGroupCache=it }
+    }
+    fun addGroup(lists:List<ChList>,id:Int,rule:GroupRule)=lists.map { if(it.id==id && it.groups.none { g -> g.key==rule.key }) it.copy(groups=it.groups+rule) else it }
+    fun removeGroup(lists:List<ChList>,id:Int,key:String)=lists.map { if(it.id==id) it.copy(groups=it.groups.filterNot { g -> g.key==key }) else it }
+    fun members(l:ChList,group:String,live:List<Item>)=if(group=="#individual") l.ids.mapNotNull { id -> live.firstOrNull { it.id==id } } else live.filter { groupKey(it)==group }
+    private fun enc(s:String)=java.net.URLEncoder.encode(s,"UTF-8")
+    private fun dec(s:String)=java.net.URLDecoder.decode(s,"UTF-8")
 
     /** Text form: one line per list "id TAB name TAB channel,channel,…". */
-    fun encode(lists: List<ChList>): String = lists.joinToString("\n") { "${it.id}\t${cleanName(it.name)}\t${it.ids.joinToString(",")}" }
+    fun encode(lists: List<ChList>): String = lists.joinToString("\n") { "${it.id}\t${cleanName(it.name)}\t${it.ids.joinToString(",")}\t${it.groups.joinToString(",") { g -> enc(g.key)+":"+enc(g.name) }}" }
 
     fun decode(s: String?): List<ChList> {
         if (s.isNullOrBlank()) return emptyList()
         return s.split('\n').mapNotNull { line ->
             val p = line.split('\t')
-            if (p.size != 3) return@mapNotNull null
+            if (p.size !in 3..4) return@mapNotNull null
             val id = p[0].toIntOrNull() ?: return@mapNotNull null
-            ChList(id, p[1], p[2].split(',').filter { it.isNotBlank() })
+            ChList(id, p[1], p[2].split(',').filter { it.isNotBlank() }, p.getOrNull(3).orEmpty().split(',').filter { it.isNotBlank() }.mapNotNull { token ->
+                runCatching { val pair=token.split(':',limit=2); GroupRule(dec(pair[0]),dec(pair[1])) }.getOrNull()
+            })
         }
     }
 }

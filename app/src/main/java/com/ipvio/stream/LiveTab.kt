@@ -108,7 +108,9 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
         }
     }
     // Genres (sports, movies, documentary, kids, news, music) – detected by category and channel name
-    val genres = remember(live) { LiveGenre.split(live) }
+    val genres by produceState<Map<String,List<Item>>>(emptyMap(),live) {
+        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { LiveGenre.split(live) }
+    }
     val favs = remember(favsAll, srcK) { if (srcK < 0) favsAll else favsAll.filter { it.src == srcK } }
     CatFavs.init(ctx)
     ChannelLists.init(ctx)
@@ -139,6 +141,11 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
     val names = (if (PlaylistStore.lists.size > 1) listOf("PL") else emptyList()) + listOf("HOME", "GUIDE", "SEARCH", "MULTI", FAV_CAT) + (if (recs.isNotEmpty()) listOf("REC") else emptyList()) + myLists.map { ChannelListLogic.key(it) } + listOf("NEW", "ALL") + genres.keys + favCats + CatOrder.sorted(CatOrder.LIVE, groups.keys.toList()).filter { it !in favCats && it !in HiddenCats.list } + (if (HiddenCats.list.any { it in groups }) listOf("HIDDEN") else emptyList())
     val catKeys = remember(names) { val seen = HashSet<String>(); names.mapIndexed { i, n -> if (seen.add(n)) n else "$n#$i" } }
     val curList = ChannelLists.byKey(sel)
+    var openGroup by remember(sel) { mutableStateOf<String?>(null) }
+    var groupPicker by remember { mutableStateOf<String?>(null) }
+    val groupMembers by produceState<Map<String,List<Item>>>(emptyMap(),live) {
+        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { live.groupBy { ChannelListLogic.groupKey(it) } }
+    }
     // Own list currently being filled (OK on a channel adds it); declared early because bundling depends on it
     var addTo by remember { mutableStateOf<Int?>(null) }
     // Adding channels opens the name search (stays open: add several channels, change the search text in between)
@@ -160,7 +167,7 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
         sel == "HOME" -> emptyList()
         LiveGenre.isGenreKey(sel) -> genres[sel].orEmpty()
         sel == "REC" -> recs
-        curList != null -> ChannelListLogic.resolve(curList, byIdLazy.value)
+        curList != null -> if(openGroup==null) emptyList() else if(openGroup=="#individual") ChannelListLogic.resolve(curList.copy(groups=emptyList()),byIdLazy.value) else groupMembers[openGroup].orEmpty()
         else -> groups[sel].orEmpty()
     }
     // Quality variants of one channel as a single row (not in favorites, own lists, recordings or while filling a list)
@@ -169,6 +176,7 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
     val list = bundled?.list ?: rawList
     val variantsOf = bundled?.variants.orEmpty()
     val firstChan = remember { FocusRequester() }
+    LaunchedEffect(openGroup) { if(openGroup!=null) { kotlinx.coroutines.delay(150); runCatching { firstChan.requestFocus() } } }
     // Back from the player: the last watched channel gets the focus (not the sidebar)
     val chanState = remember { LazyListState() }
     val restoreReq = remember { FocusRequester() }
@@ -212,7 +220,7 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
     LaunchedEffect(Unit) {
         snapshotFlow { focusTarget }.collectLatest { t -> if (focusedState.value != null) kotlinx.coroutines.delay(300); focusedState.value = t }
     }
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().onPreviewKeyEvent { event -> if(event.type==KeyEventType.KeyDown && event.key==Key.Back && openGroup!=null) { openGroup=null; true } else false }) {
         FocusedBackdrop(focusedState, Modifier.fillMaxSize())
         Row(Modifier.fillMaxSize().padding(top = 20.dp)) {
             LazyColumn(Modifier.width(270.dp).fillMaxHeight().padding(start = 24.dp, end = 8.dp), state = catState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -323,7 +331,7 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
                         n == "HOME" -> 0
                         n == "REC" -> recs.size
                         LiveGenre.isGenreKey(n) -> genres[n]?.size ?: 0
-                        ml != null -> ChannelListLogic.resolve(ml, byIdLazy.value).size
+                        ml != null -> ml.groups.size + (if(ml.ids.isEmpty()) 0 else 1)
                         else -> groups[n]?.size ?: 0
                     }
                     var listMenu by remember { mutableStateOf(false) }
@@ -336,13 +344,13 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
                             onFocus = { sel = n }, onRight = { runCatching { firstChan.requestFocus() } },
                             onFav = { if (ml != null) listMenu = true else if (plainCat) catMenu = true else if (n != FAV_CAT && n != "ALL" && n != "REC" && !LiveGenre.isGenreKey(n)) CatFavs.toggle(ctx, n) },
                             icon = icon, raw = ml != null
-                        ) { runCatching { firstChan.requestFocus() } }
+                        ) { sel=n; openGroup=null; plScope.launch { kotlinx.coroutines.delay(100); runCatching { firstChan.requestFocus() } } }
                         // Menu of a provider category: favorite on/off, hide, move, sorting of all categories
                         var sortMenu by remember { mutableStateOf(false) }
                         if (catMenu && plainCat) OptionPopup(
                             listOf(
                                 if (n in CatFavs.list) "Aus Favoriten entfernen" else "Zu Favoriten hinzufügen", "Kategorie ausblenden",
-                                "Nach oben verschieben", "Nach unten verschieben", "An den Anfang verschieben", "Kategorien sortieren …"
+                                "Nach oben verschieben", "Nach unten verschieben", "An den Anfang verschieben", "Kategorien sortieren …", "Add synced group to lineup"
                             ), -1, { catMenu = false }
                         ) { i ->
                             catMenu = false
@@ -353,7 +361,8 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
                                 2 -> CatOrder.move(ctx, CatOrder.LIVE, all, n, -1)
                                 3 -> CatOrder.move(ctx, CatOrder.LIVE, all, n, 1)
                                 4 -> CatOrder.toTop(ctx, CatOrder.LIVE, all, n)
-                                else -> sortMenu = true
+                                5 -> sortMenu = true
+                                6 -> groupPicker = n
                             }
                         }
                         if (sortMenu) OptionPopup(listOf("Anbieter-Reihenfolge", "A–Z", "Eigene Reihenfolge"), CatOrder.mode(CatOrder.LIVE), { sortMenu = false }) { i ->
@@ -374,24 +383,21 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
                 LiveHome(live, genres, favs, firstChan, onOpen = { ch, l -> ZapContext.list = l; ZapContext.key = "ALL"; onOpen(ch) })
             } else {
             Column(Modifier.weight(0.9f).fillMaxHeight().padding(end = 24.dp)) {
-                // Own list: rename and delete clearly visible above the channels (before only via long OK on the list)
-                if (curList != null) Row(
-                    Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    AppIcon(AIcon.Lists, Accent1, size = 22.dp)
-                    Text(raw = true, text = curList.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    PillButton("Sender hinzufügen", if (list.isEmpty()) Modifier.focusRequester(firstChan) else Modifier, icon = AIcon.Plus) { addTo = curList.id; query = ""; sel = "SEARCH"; addFocusTick++ }
-                    PillButton("Umbenennen", icon = AIcon.Edit) { ask = NameAsk("Liste umbenennen", curList.name) { ChannelLists.rename(ctx, curList.id, it) } }
-                    Box {
-                        PillButton("Liste löschen", icon = AIcon.Close) { askDelete = true }
-                        if (askDelete) OptionPopup(listOf("Löschen", "Abbrechen"), -1, { askDelete = false }, listOf(AIcon.Close, AIcon.Left)) { i ->
-                            askDelete = false
-                            if (i == 0) { ChannelLists.delete(ctx, curList.id); sel = "ALL"; LiveMemory.setSel(ctx, "ALL") }
+                // Openable group entries: never flatten all provider groups into one giant list.
+                if(curList != null && openGroup==null) {
+                    Text(raw=true,text="${curList.name} · Open a group",color=Color.White,fontSize=20.sp)
+                    Text(raw=true,text="Synced groups update when the provider refreshes. Hold a provider category to add it here.",color=Muted,fontSize=13.sp)
+                    PillButton("Sender hinzufügen",icon=AIcon.Plus) { addTo=curList.id; query="";sel="SEARCH";addFocusTick++ }
+                    PillButton("Umbenennen",icon=AIcon.Edit) { ask=NameAsk("Liste umbenennen",curList.name) { ChannelLists.rename(ctx,curList.id,it) } }
+                    LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        itemsIndexed(curList.groups,key={_,g -> g.key}) { index,g ->
+                            val members=groupMembers[g.key].orEmpty()
+                            CatRow(members.firstOrNull()?.group ?: g.name,members.size,false,if(index==0) Modifier.focusRequester(firstChan) else Modifier,onFocus={},onRight={openGroup=g.key},onFav={ChannelLists.removeGroup(ctx,curList.id,g.key)},icon=AIcon.Lists,raw=true) { openGroup=g.key }
                         }
+                        if(curList.ids.isNotEmpty()) item { CatRow("Individual channels",curList.ids.count { byIdLazy.value.containsKey(it) },false,if(curList.groups.isEmpty()) Modifier.focusRequester(firstChan) else Modifier,onFocus={},onRight={openGroup="#individual"},onFav={},icon=AIcon.Star,raw=true) { openGroup="#individual" } }
                     }
-                }
+                } else {
+                if(curList != null && openGroup!=null) PillButton("Back to lineup groups",icon=AIcon.Left) { openGroup=null }
                 if (addList != null) Row(
                     Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -448,6 +454,7 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
                     }
                 }
             }
+            }
             // Right: what is on the selected channel
             Box(Modifier.weight(1.1f).fillMaxHeight().padding(start = dpx(30), end = dpx(60), top = dpx(150))) {
                 if (sel == "SEARCH") Column(Modifier.fillMaxSize()) {
@@ -470,6 +477,16 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
             }
                     }
 }
+        groupPicker?.let { category ->
+            val categoryItems=groups[category].orEmpty()
+            val rules=categoryItems.distinctBy { ChannelListLogic.groupKey(it) }.map { GroupRule(ChannelListLogic.groupKey(it),it.group) }
+            val targets=ChannelLists.lists.toList()
+            OptionPopup(targets.map { "Add to " + it.name } + "New lineup",-1,{groupPicker=null}) { index ->
+                groupPicker=null
+                if(index<targets.size) rules.forEach { ChannelLists.addGroup(ctx,targets[index].id,it) }
+                else ask=NameAsk("New lineup","") { name -> val id=ChannelLists.create(ctx,name);rules.forEach { ChannelLists.addGroup(ctx,id,it) };sel=ChannelListLogic.PREFIX+id }
+            }
+        }
         ask?.let { a -> NameDialog(a.title, a.initial, onDismiss = { ask = null }) { a.onSave(it); ask = null } }
     }
 }

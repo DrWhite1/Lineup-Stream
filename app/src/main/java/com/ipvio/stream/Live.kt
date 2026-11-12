@@ -44,6 +44,9 @@ object ChannelLists {
         return n.last().id
     }
 
+    fun addGroup(c: Context,id:Int,rule:GroupRule) = set(c,ChannelListLogic.addGroup(lists.toList(),id,rule))
+    fun removeGroup(c: Context,id:Int,key:String) = set(c,ChannelListLogic.removeGroup(lists.toList(),id,key))
+
     fun rename(c: Context, id: Int, name: String) = set(c, ChannelListLogic.rename(lists.toList(), id, name))
     fun delete(c: Context, id: Int) = set(c, ChannelListLogic.delete(lists.toList(), id))
     fun add(c: Context, id: Int, ch: String) = set(c, ChannelListLogic.add(lists.toList(), id, ch))
