@@ -5,6 +5,8 @@ package com.ipvio.stream
  * Without Android, testable. No data from outside – everything comes from your playlist and its TV program.
  */
 object SportLogic {
+    private val EURO_SOCCER=Regex("""\b(uefa\s+nations\s+league|nations\s+league|jupiler(?:\s+pro\s+league)?|belgian\s+pro\s+league|belgische\s+pro\s+league|eredivisie|primeira\s+liga|liga\s+portugal|scottish\s+premiership|s[üu]per\s+lig|superliga|eliteserien|allsvenskan|super\s+league\s+greece|conference\s+league|(?:efl|english)\s+championship|ligue\s+2|serie\s+b|copa\s+del\s+rey)\b""",RegexOption.IGNORE_CASE)
+
     // Word boundaries prevent hits like "Transport"; brands without a word boundary (Eurosport, DAZN …) stand alone.
     private val CHANNEL = Regex(
         """\b(sports?|spor|sportklub|sportdigital|deportes?|esportes?|sportivo)\b|eurosport|dazn|espn|bein\s?sports?|sky\s?sports?|supersport|""" +
@@ -23,9 +25,9 @@ object SportLogic {
         RegexOption.IGNORE_CASE
     )
 
-    fun isSportChannel(i: Item): Boolean = i.kind == Kind.LIVE && (CHANNEL.containsMatchIn(i.group) || CHANNEL.containsMatchIn(i.title))
+    fun isSportChannel(i: Item): Boolean = i.kind == Kind.LIVE && (CHANNEL.containsMatchIn(i.group) || CHANNEL.containsMatchIn(i.title) || EURO_SOCCER.containsMatchIn(i.group+" "+i.title))
 
-    fun isSportEvent(title: String): Boolean = EVENT.containsMatchIn(title)
+    fun isSportEvent(title: String): Boolean = EVENT.containsMatchIn(title) || EURO_SOCCER.containsMatchIn(title)
 
     /** A show in the sports area: channel, show, running now? */
     class Slot(val ch: Item, val prog: EpgEntry, val live: Boolean)
@@ -86,6 +88,7 @@ object SportLogic {
 
     /** Sport: first the show title, then channel name and category of the channel; otherwise "Other". */
     fun categoryOf(title: String, chText: String): Int {
+        if(EURO_SOCCER.containsMatchIn(title)) return catIndex("Fußball")
         for ((i, c) in CATS.withIndex()) if (c.re.containsMatchIn(title)) return i
         for ((i, c) in CATS.withIndex()) if (c.re.containsMatchIn(chText)) return i
         return OTHER

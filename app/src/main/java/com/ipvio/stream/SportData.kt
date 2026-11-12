@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,6 +65,26 @@ object SportData {
     )
 
     val LEAGUES = listOf(
+        League("UEFA Nations League", "soccer/uefa.nations", "Fußball"),
+        League("Jupiler Pro League", "soccer/bel.1", "Fußball"),
+        League("Eredivisie", "soccer/ned.1", "Fußball"),
+        League("Primeira Liga", "soccer/por.1", "Fußball"),
+        League("Scottish Premiership", "soccer/sco.1", "Fußball"),
+        League("Turkish Super Lig", "soccer/tur.1", "Fußball"),
+        League("Swiss Super League", "soccer/sui.1", "Fußball"),
+        League("Austrian Bundesliga", "soccer/aut.1", "Fußball"),
+        League("Danish Superliga", "soccer/den.1", "Fußball"),
+        League("Eliteserien", "soccer/nor.1", "Fußball"),
+        League("Allsvenskan", "soccer/swe.1", "Fußball"),
+        League("Greek Super League", "soccer/gre.1", "Fußball"),
+        League("Conference League", "soccer/uefa.europa.conf", "Fußball"),
+        League("Championship", "soccer/eng.2", "Fußball"),
+        League("LaLiga 2", "soccer/esp.2", "Fußball"),
+        League("Serie B", "soccer/ita.2", "Fußball"),
+        League("Ligue 2", "soccer/fra.2", "Fußball"),
+        League("FA Cup", "soccer/eng.fa", "Fußball"),
+        League("Copa del Rey", "soccer/esp.copa_del_rey", "Fußball"),
+
         League("Bundesliga", "soccer/ger.1", "Fußball"),
         League("2. Bundesliga", "soccer/ger.2", "Fußball"),
         League("Premier League", "soccer/eng.1", "Fußball"),
@@ -89,7 +110,7 @@ object SportData {
     )
 
     /** Popular competitions for the overview (shown if active). */
-    val POPULAR = listOf("Premier League", "Champions League", "Bundesliga", "LaLiga", "NBA", "NFL", "NHL", "MLB")
+    val POPULAR = listOf("Jupiler Pro League", "UEFA Nations League", "Eredivisie", "Premier League", "Champions League", "Bundesliga", "LaLiga", "NBA", "NFL", "NHL", "MLB")
 
     fun league(name: String): League? = LEAGUES.firstOrNull { it.name == name }
     fun leagueOf(g: Game): League? = league(g.league)
@@ -103,6 +124,7 @@ object SportData {
     /** Did the last fetch work? (For the hint in the sports area.) */
     @Volatile var lastOk = true
 
+    private val feedSlots=kotlinx.coroutines.sync.Semaphore(4)
     private val cache = HashMap<String, Pair<Long, List<Game>>>()
 
     /** Day as yyyyMMdd in the chosen time zone; [dayOffset] -1 = yesterday, 0 = today, 1 = tomorrow. */
@@ -393,7 +415,7 @@ object SportData {
     suspend fun fetch(l: League, ymd: String, maxAgeMs: Long = 40_000): List<Game> = withContext(Dispatchers.IO) {
         val dayParam = l.kind == KIND_TEAM
         val key = l.path + "|" + (if (dayParam) ymd else "now")
-        val all = load(l, key, if (dayParam) ymd else null, maxAgeMs)
+        val all = feedSlots.withPermit { load(l, key, if (dayParam) ymd else null, maxAgeMs) }
         if (dayParam) all else all.filter { onDay(it, ymd, General.zone()) }
     }
 

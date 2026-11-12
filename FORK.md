@@ -2,6 +2,13 @@
 
 An independent GPL-3.0 fork of [IPVIO Stream](https://github.com/Emrodev/IPVIO-Stream) by its contributors. Not an official IPVIO release and not endorsed by upstream. Original code, font licenses and third-party notices remain in this source tree. See LICENSE.
 
+## 0.2.1 follow-up
+
+- App-wide and Live TV guide routes preserve the selected list/group instead of resetting to ALL. The player guide and its search cannot widen to unrelated provider channels. An explicitly selected All channels list still means all channels; without a prior choice the guide starts with the first provider group, not the full catalog.
+- Only composed/visible guide rows fetch programme data, plus the selected channel's detail panel. Removed the eager 80-channel preload. This does not change full XMLTV subscription import or initial catalog loading elsewhere.
+- Full-width channel/time grid, focused programme panel above, Now, two-hour and day navigation. No category sidebar or video cutout obscures the grid. Programme availability/history is still provider-dependent.
+- Added Jupiler Pro League and UEFA Nations League first, plus 17 other European league/cup feeds. Extended football EPG aliases. Four concurrent scoreboard requests maximum. See docs/SPORTS-SOURCES.md.
+
 ## Fork changes (0.2.0)
 
 - Named lineups open to synced groups, not a flattened dump of all their channels.

@@ -34,6 +34,19 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
+/** Last explicit live selection, retained while the user opens the app-wide guide. */
+object GuideSelection {
+    var ids: List<String>? = null
+    var name: String = "TV guide"
+    fun resolve(all:List<Item>):List<Item> {
+        val chosen=ids
+        if(chosen!=null) { val byId=all.associateBy { it.id };return chosen.mapNotNull { byId[it] } }
+        // No prior choice: start with one provider group, never the whole catalog implicitly.
+        val first=all.firstOrNull() ?: return emptyList()
+        return all.filter { ChannelListLogic.groupKey(it)==ChannelListLogic.groupKey(first) }
+    }
+}
+
 object ZapContext {
     var list: List<Item> = emptyList()
     /** Category from which playback was started (e.g. own channel list "L:3") – the player shows it when switching channels. */
@@ -170,6 +183,13 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
         curList != null -> if(openGroup==null) emptyList() else if(openGroup=="#individual") ChannelListLogic.resolve(curList.copy(groups=emptyList()),byIdLazy.value) else groupMembers[openGroup].orEmpty()
         else -> groups[sel].orEmpty()
     }
+    SideEffect {
+        if(sel!="HOME" && sel!="GUIDE" && sel!="SEARCH" && sel!="REC") {
+            val scope=if(curList!=null && openGroup==null) ChannelListLogic.resolve(curList,byIdLazy.value) else rawList
+            GuideSelection.ids=scope.map { it.id }
+            GuideSelection.name=curList?.let { l -> l.name+(openGroup?.let { g -> " / "+(if(g=="#individual") "Individual channels" else groupMembers[g]?.firstOrNull()?.group.orEmpty()) } ?: "") } ?: sel
+        }
+    }
     // Quality variants of one channel as a single row (not in favorites, own lists, recordings or while filling a list)
     val bundleOn = General.bundleLive && sel != FAV_CAT && sel != "REC" && curList == null && addTo == null
     val bundled = remember(rawList, bundleOn) { if (bundleOn) LiveBundleLogic.bundle(rawList) else null }
@@ -230,7 +250,7 @@ fun LiveTab(liveAll: List<Item>, groupsAll: Map<String, List<Item>>, favsAll: Li
                     if (n == "GUIDE") {
                         // TV guide as in the design: starts the last watched (otherwise first) channel of the selection and opens the guide
                         CatRow("TV-Guide", -1, false, Modifier, onFocus = {}, onRight = { runCatching { firstChan.requestFocus() } }, onFav = {}, icon = AIcon.Grid) {
-                            val src = list.ifEmpty { live }
+                            val src = GuideSelection.resolve(live)
                             val ch = History.ids.firstNotNullOfOrNull { id -> src.firstOrNull { it.id == id } } ?: src.firstOrNull()
                             if (ch != null) { ZapContext.list = src; ZapContext.key = sel; AppNav.openGuide = true; onOpen(ch) }
                         }

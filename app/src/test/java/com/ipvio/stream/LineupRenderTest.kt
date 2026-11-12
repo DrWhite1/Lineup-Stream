@@ -58,6 +58,12 @@ class LineupRenderTest {
         snap("03-group-channels")
         compose.onNodeWithText("Back to lineup groups",useUnmergedTree=true).assertExists()
         compose.onAllNodesWithText("Arena One",useUnmergedTree=true).onFirst().assertExists()
+        compose.onNodeWithText("TV guide").performClick()
+        compose.runOnIdle {
+            org.junit.Assert.assertEquals(listOf(sport.id),ZapContext.list.map {it.id})
+            org.junit.Assert.assertTrue(AppNav.openGuide)
+            AppNav.openGuide=false
+        }
     }
     @Test fun playerBrowserUsesOpenableGroupsToo() {
         val sport=Item("demo1",Kind.LIVE,"Arena One",null,"https://example.invalid/live/demo/fictional/1.ts",null,"Sports",providerGroupId="10")
@@ -80,6 +86,37 @@ class LineupRenderTest {
         snap("05-player-group-channels")
         compose.onAllNodesWithText("Arena One",useUnmergedTree=true).onFirst().assertExists()
         compose.onNodeWithText("Back to lineup groups",useUnmergedTree=true).assertExists()
+    }
+
+    @Test fun scopedGuideRendersTimeGridWithoutUnrelatedChannels() {
+        val now=System.currentTimeMillis()/1000
+        val field=Xmltv::class.java.getDeclaredField("progs").apply { isAccessible=true }
+        @Suppress("UNCHECKED_CAST")
+        val programmes=field.get(Xmltv) as java.util.concurrent.ConcurrentHashMap<String,List<EpgEntry>>
+        val channels=(1..20).map { n ->
+            programmes["guide$n"]=(0..4).map { t -> EpgEntry("Demo programme $n.$t","Fictional programme description",now-1800+t*3600,now+1800+t*3600) }
+            Item("guide$n",Kind.LIVE,"Channel $n",null,"https://example.invalid/$n.ts",null,"My Sports",tvgId="guide$n")
+        }
+        LiveHold.lastRepeat=-10000
+        @Suppress("UNCHECKED_CAST")
+        val cache=EpgFull::class.java.getDeclaredField("cache").apply { isAccessible=true }.get(EpgFull) as LruCache<String,Pair<Long,List<EpgEntry>>>
+        channels.forEach { cache[it.id]=System.currentTimeMillis() to programmes[it.tvgId].orEmpty() }
+        GuideSelection.name="My lineup / Sports"
+        compose.setContent { Guide(channels,channels.first().id,remember{FocusRequester()},{},all=channels+Item("other",Kind.LIVE,"Unrelated News",null,"https://example.invalid/other",null,"Other"),onPick={}) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithText("Unrelated News",useUnmergedTree=true).assertDoesNotExist()
+        compose.onNodeWithText("My lineup / Sports · 20 channels",useUnmergedTree=true).assertExists()
+        compose.onAllNodesWithText("Demo programme 1.0",useUnmergedTree=true).onFirst().assertExists()
+        snap("06-scoped-guide")
+        compose.onNodeWithText("2h >").performClick()
+        snap("07-guide-forward")
+    }
+
+    @Test fun soccerLeaguesPageShowsPriorityCompetitions() {
+        compose.setContent { Box(Modifier.fillMaxSize().background(Color(0xFF0B101B))) { HubLeagues(HubCtx(remember{HubNav()},emptyList(),{_,_->},{_,_->})) } }
+        compose.onNodeWithText("UEFA Nations League",useUnmergedTree=true).assertExists()
+        compose.onNodeWithText("Jupiler Pro League",useUnmergedTree=true).assertExists()
+        snap("08-european-leagues")
     }
 
 }

@@ -293,9 +293,10 @@ private fun AppContent() {
 
     /** EPG (sidebar/tile): start the last watched channel (otherwise the first) and show the TV guide right away. */
     fun openEpg() {
-        val ch = History.ids.firstNotNullOfOrNull { id -> liveAll.firstOrNull { it.id == id } } ?: liveAll.firstOrNull() ?: return
+        val scope=GuideSelection.resolve(liveAll)
+        val ch = History.ids.firstNotNullOfOrNull { id -> scope.firstOrNull { it.id == id } } ?: scope.firstOrNull() ?: return
         AppNav.focusTab = -1
-        ZapContext.list = liveAll; ZapContext.key = "ALL"
+        ZapContext.list = scope; ZapContext.key = null
         AppNav.openGuide = true
         start(ch, ch.title, ch.url)
     }

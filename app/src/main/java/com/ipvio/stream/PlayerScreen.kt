@@ -346,6 +346,7 @@ fun PlayerScreen(req: PlayReq, zapList: List<Item>, liveAll: List<Item>, seriesI
         History.add(ctx, it.id)
         cur = PlayReq(it.title, it.url, it.id, true, 0L)
         zapSrc = src
+        GuideSelection.ids=src.map { it.id }
         showChannels = false
         showCats = false
         showGuide = false
@@ -1120,7 +1121,7 @@ fun PlayerScreen(req: PlayReq, zapList: List<Item>, liveAll: List<Item>, seriesI
         // Aspect ratio (in the shrunken guide picture always "Fit"). Zoom: picture area larger than the screen, centered;
         // 4:3: area in 4:3 aspect ratio, centered.
         val am = if (showGuide) 0 else aspect
-        val videoMod = if (showGuide) Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 24.dp).size(width = 400.dp, height = 225.dp).clip(RoundedCornerShape(DS.RadiusM))
+        val videoMod = if (showGuide) Modifier.size(0.dp)
         else when (am) {
             3, 4 -> {
                 val z = if (am == 3) 1.15f else 1.33f
@@ -1595,7 +1596,7 @@ fun PlayerScreen(req: PlayReq, zapList: List<Item>, liveAll: List<Item>, seriesI
         if (showGuide) {
             Guide(
                 zapSrc, cur.itemId, guideFocus, onClose = { showGuide = false }, onArchive = { ch, e -> playArchive(ch, e) },
-                all = liveAll.ifEmpty { zapSrc }, onPickIn = { ch, src -> switchTo(ch, src) }
+                all = zapSrc, onPickIn = { ch, src -> switchTo(ch, src) }
             ) { switchTo(it, zapSrc) }
         }
 

@@ -1,3 +1,10 @@
+# 0.2.1 validation
+
+- assembleDebug passed; 355 tests passed with zero failures/errors/skips, including guide scope resolution, removed-channel no-ALL-fallback, route checks, scoped guide/time navigation renders and European football feed/EPG tests.
+- Live ESPN identity checks passed for 19 new European football feeds including the user's priorities Jupiler Pro League and UEFA Nations League. Parser tests use one real public event from each priority feed. This validates feed integration, not future availability or broadcast rights.
+- Inspected 1280x720 component renders of the scoped time grid, focused programme panel, two-hour navigation and league browser. Guide demo channels/programmes are fictional.
+- Lint was not repeated; the prior incomplete lint result still applies. Actual TV remote behavior, provider EPG data and movie/series playback/resume still need the user's device test.
+
 # 0.2.0 validation
 
 - `assembleDebug`: passed using JDK 25, Gradle 9.6, Android SDK 37.

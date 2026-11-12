@@ -117,12 +117,12 @@ fun Guide(
     val base = (openedAt - 1800) - ((openedAt - 1800) % 1800)
     // Channels with archive (catchup): this many days can be scrolled back
     val pastDays = remember(list, Catchup.version) { Catchup.maxDays(list) }
-    val minStart = base - pastDays * 86400L
+    val minStart = base - maxOf(1,pastDays) * 86400L
     // "Now" moves along: the highlight and the state of the shows are updated every 30 s
     var nowSec by remember { mutableLongStateOf(openedAt) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); nowSec = System.currentTimeMillis() / 1000 } }
     // dp per minute: "Small" shows a good 3 hours at once, "Medium" a good 2 hours
-    val zooms = listOf(3.5f, 5f, 8f)
+    val zooms = listOf(3.5f, 5f, 6f)
     val zoomNames = listOf("Klein", "Mittel", "Groß")
     val rowNames = listOf("Kompakt", "Normal", "Groß")
     val rowHeights = listOf(54, 66, 82)
@@ -139,23 +139,19 @@ fun Guide(
     var showSettings by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     // Categories on the left (as in the design): current list, all channels, favorites, own lists, provider groups
-    val cats = remember(list, all, Library.favs.size, ChannelLists.lists.size) { guideCategories(list, all) }
+    val cats = remember(list) { listOf(GuideCat(GuideSelection.name,list,AIcon.Lists)) }
     var catIdx by remember { mutableIntStateOf(0) }
     val shown = cats.getOrNull(catIdx)?.items ?: list
     val catReq = remember { FocusRequester() }
     val idx = shown.indexOfFirst { it.id == curId }.coerceAtLeast(0)
     val ls = key(catIdx) { rememberLazyListState(maxOf(idx - 1, 0)) }
 
-    // Preload program data: first the channels around the current one, 8 at a time
-    LaunchedEffect(shown) {
-        val order = shown.indices.sortedBy { kotlin.math.abs(it - idx) }.map { shown[it] }
-        for (chunk in order.take(80).chunked(8)) {
-            // No preloading while Up/Down is held: network and parsing would compete with scrolling
-            while (LiveHold.active()) delay(150)
-            coroutineScope { chunk.map { async { EpgFull.get(it) } }.awaitAll() }
-        }
+    // The initial programme panel is for one selected channel, not a provider-wide prefetch.
+    LaunchedEffect(shown,curId) {
+        val first=shown.firstOrNull { it.id==curId } ?: shown.firstOrNull()
+        if(first!=null) { infoItem=first;infoE=Epg.current(EpgFull.get(first)) }
     }
-
+    // GuideRow loads only composed/visible rows. No eager whole-list prefetch.
     fun shiftFor(e: EpgEntry) {
         val center = e.start + minOf(e.end - e.start, viewMin * 60L) / 2
         winStart = (center - viewMin * 30L).coerceIn(minStart, base + maxSpan - viewMin * 60L)
@@ -188,9 +184,9 @@ fun Guide(
         if (System.currentTimeMillis() >= GuideBack.mutedUntil) when {
             inBlock -> {
                 val r = rowReq
-                if (r == null || !runCatching { r.requestFocus() }.isSuccess) { if (!runCatching { catReq.requestFocus() }.isSuccess) onClose() }
+                if (r == null || !runCatching { r.requestFocus() }.isSuccess) { onClose() }
             }
-            !inCats -> if (!runCatching { catReq.requestFocus() }.isSuccess) onClose()
+            !inCats -> onClose()
             else -> onClose()
         }
     }
@@ -201,46 +197,32 @@ fun Guide(
     LaunchedEffect(GuidePrefs.zoom) { infoE?.let { shiftFor(it) } }
 
     if (showSearch) GuideSearchDialog(
-        all,
-        onPick = { ch -> showSearch = false; val p = onPickIn; if (p != null) p(ch, all) else onPick(ch) },
+        list,
+        onPick = { ch -> showSearch = false; val p = onPickIn; if (p != null) p(ch, list) else onPick(ch) },
         onClose = { showSearch = false; GuideBack.mutedUntil = System.currentTimeMillis() + 400 }
     )
     // Top: header + selected show on the left, the running picture on the right (PlayerScreen shrinks it to 400 × 225 dp, top right).
     // Below: categories and program grid across the full width – so several hours are visible at once.
     Column(
         Modifier.fillMaxSize()
-            .drawBehind {
-                val l = size.width - 424.dp.toPx(); val t = 20.dp.toPx()
-                val hole = androidx.compose.ui.geometry.RoundRect(l, t, l + 400.dp.toPx(), t + 225.dp.toPx(), androidx.compose.ui.geometry.CornerRadius(DS.RadiusM.toPx()))
-                val path = androidx.compose.ui.graphics.Path().apply {
-                    fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
-                    addRect(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height))
-                    addRoundRect(hole)
-                }
-                drawPath(path, Color(0xF7090B12))
-            }
+            .background(Color(0xFF090B12))
             .padding(start = 24.dp, top = 14.dp, bottom = 10.dp, end = 24.dp)
     ) {
-        Row(Modifier.fillMaxWidth().height(238.dp)) {
+        Row(Modifier.fillMaxWidth().height(196.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().padding(end = 20.dp)) {
                 // Header: title, date and time, Now and View
                 Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MenuIcon(3, Accent1, Modifier.size(30.dp))
                     Column(Modifier.weight(1f)) {
                         Text("TV-Guide", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("Live TV · Jetzt und in den nächsten Stunden", color = Muted, fontSize = 13.sp, maxLines = 1)
-                    }
-                    Row(
-                        Modifier.clip(RoundedCornerShape(50)).background(Color(0x1FFFFFFF)).border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(50))
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(raw = true, text = dayLabel(nowSec), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Box(Modifier.width(1.dp).height(14.dp).background(Color(0x44FFFFFF)))
-                        Text(raw = true, text = hhmm(nowSec), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, style = TNUM)
+                        Text(raw=true,text="${GuideSelection.name} · ${list.size} channels", color = Muted, fontSize = 13.sp, maxLines = 1)
                     }
                     SmallPill("Suche", icon = AIcon.Edit) { showSearch = true }
+                    SmallPill("< 2h") { winStart=(winStart-7200).coerceAtLeast(minStart) }
                     SmallPill("Jetzt", icon = AIcon.Dot) { jumpNow() }
+                    SmallPill("2h >") { winStart=(winStart+7200).coerceAtMost(base+maxSpan-viewMin*60) }
+                    SmallPill("Day -") { winStart=(winStart-86400).coerceAtLeast(minStart) }
+                    SmallPill("Day +") { winStart=(winStart+86400).coerceAtMost(base+maxSpan-viewMin*60) }
                     Box {
                         SmallPill("", icon = AIcon.Gear) { showSettings = true }
                         if (showSettings) {
@@ -276,27 +258,15 @@ fun Guide(
                 }
                 GuideDetailPanel(infoE, infoItem, nowSec, Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp))
             }
-            Spacer(Modifier.width(400.dp))
+
         }
         Row(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
-            // Categories
-            LazyColumn(
-                Modifier.width(206.dp).fillMaxHeight().clip(RoundedCornerShape(DS.RadiusL)).background(Color(0x0FFFFFFF)),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                itemsIndexed(cats) { ci, c ->
-                    GuideCatRow(c, ci == catIdx, if (ci == catIdx) Modifier.focusRequester(catReq) else Modifier,
-                        onFocus = { inCats = true; inBlock = false; if (catIdx != ci) catIdx = ci }, onLeft = onClose) { runCatching { focus.requestFocus() } }
-                }
-            }
-            Spacer(Modifier.width(12.dp))
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(DS.RadiusL)).background(Color(0x0AFFFFFF)).padding(horizontal = 8.dp, vertical = 6.dp)) {
                 val vm = ((maxWidth - 208.dp).value / dpm).toInt().coerceAtLeast(40)
                 SideEffect { if (viewMin != vm) viewMin = vm }
                 Column(Modifier.fillMaxSize()) {
                     Row(Modifier.height(34.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(raw = true, text = cats.getOrNull(catIdx)?.name?.let { Lang.tr(it) } ?: "", color = Muted, fontSize = 13.sp,
+                        Text(raw = true, text = dayLabel(winStart), color = Muted, fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(208.dp).padding(start = 6.dp))
                         Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
                             // only the visible time marks (with archive the grid reaches days back)
@@ -340,7 +310,7 @@ fun Guide(
                                 onRowFocus = { e -> rowFocus.value = e to ch; jumpScope.launch { holdJump(ls, i) } },
                                 onBlock = { inB, r -> inBlock = inB; inCats = false; rowReq = r; if (inB) rowFocus.value = null },
                                 // Left from the channel column: to the categories (before: close)
-                                onClose = { if (!runCatching { catReq.requestFocus() }.isSuccess) onClose() },
+                                onClose = { onClose() },
                                 onArchive = { e -> onArchive(ch, e) },
                                 onPick = { val p = onPickIn; if (p != null) p(ch, shown) else onPick(ch) }
                             )
@@ -357,7 +327,7 @@ fun Guide(
             val okText = guideOkAction(infoE, infoItem, nowSec)
             GuideHint("OK", okText)
             if (pastDays > 0) GuideHint(null, "1 Tag", AIcon.Rewind, AIcon.FastForward)
-            GuideHint("Zurück", "Sender, Kategorie, schließen")
+            GuideHint("Back", "Channel, close")
         }
 }
 }
@@ -370,24 +340,9 @@ private val BlockLine = Color(0xFF2A2F3B)
 /** A category on the left in the TV guide. */
 class GuideCat(val name: String, val items: List<Item>, val icon: AIcon?)
 
-/** Categories for the TV guide: current list (if different from all), all channels, favorites, own lists, groups. */
-fun guideCategories(list: List<Item>, all: List<Item>): List<GuideCat> {
-    val out = ArrayList<GuideCat>()
-    val allIds = all.size
-    if (list.size != allIds && list.isNotEmpty()) out.add(GuideCat("Aktuelle Liste", list, AIcon.Play))
-    out.add(GuideCat("Alle Sender", all, AIcon.Grid))
-    val byId = all.associateBy { it.id }
-    val favs = Library.favs.mapNotNull { byId[it] }
-    if (favs.isNotEmpty()) out.add(GuideCat("Favoriten", favs, AIcon.Star))
-    for (l in ChannelLists.lists.toList()) {
-        val items = l.ids.mapNotNull { byId[it] }
-        if (items.isNotEmpty()) out.add(GuideCat(l.name, items, AIcon.Lists))
-    }
-    val groups = LinkedHashMap<String, ArrayList<Item>>()
-    for (it in all) groups.getOrPut(it.group) { ArrayList() }.add(it)
-    if (groups.size > 1) for ((g, l) in groups) out.add(GuideCat(g, l, null))
-    return out
-}
+/** Compatibility helper: guide choices may never widen the supplied scope. */
+fun guideCategories(list: List<Item>, all: List<Item>): List<GuideCat> =
+    listOf(GuideCat("Aktuelle Liste",list,AIcon.Lists))
 
 @Composable
 private fun GuideCatRow(c: GuideCat, selected: Boolean, modifier: Modifier, onFocus: () -> Unit, onLeft: () -> Unit, onClick: () -> Unit) {
@@ -437,11 +392,15 @@ private fun GuideDetailPanel(e: EpgEntry?, ch: Item?, nowSec: Long, modifier: Mo
         modifier.clip(shape).background(Color(0x0FFFFFFF)).border(1.dp, Color(0x14FFFFFF), shape).padding(horizontal = 18.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        if(ch!=null) Box(Modifier.width(150.dp).fillMaxHeight().clip(shape).background(Color(0x20FFFFFF)),contentAlignment=Alignment.Center) {
+            if(ch.logo!=null) AsyncImage(ch.logo,null,Modifier.size(80.dp),contentScale=ContentScale.Fit)
+            else Text(raw=true,text=ch.title.take(3).uppercase(),color=Color.White,fontSize=30.sp,fontWeight=FontWeight.Bold)
+        }
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             if (e == null || ch == null) {
                 Text("TV-Guide", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                 Text("Wähle eine Sendung mit den Pfeiltasten, OK schaltet auf den Sender.", color = PT.T2, fontSize = 14.sp)
-                Text("Zurück: zum Sender, dann zur Kategorie, dann schließen.", color = Muted, fontSize = 13.sp)
+                Text(raw=true,text="Back: channel, then close.", color = Muted, fontSize = 13.sp)
                 return@Column
             }
             val isNow = nowSec >= e.start && nowSec < e.end
