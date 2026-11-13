@@ -1153,14 +1153,14 @@ private fun LivePage(ctx: Context) {
     Text("Programm bei $xtream von ${counts.first} Sendern möglich", color = Muted, fontSize = 15.sp)
     Text("XMLTV: ${Xmltv.status}", color = Accent2, fontSize = 15.sp)
     ToggleRow("Sender-Qualitäten bündeln", "Derselbe Sender in 8K, 4K, FHD, HD und SD erscheint als eine Zeile. OK startet die beste Qualität, die anderen wählst du im Menü des Senders (OK gedrückt halten).", General.bundleLive) { General.setBundleLive(ctx, it) }
-    Hint("Die App sucht die Programmdaten automatisch (Xtream-Schnittstelle oder XMLTV-Adresse aus der Playlist). Wenn dein Anbieter eine eigene XMLTV-Adresse nennt, trage sie hier ein.")
+    Hint("Xtream now/next loads on demand for visible channels. Full XMLTV is manual only. The buttons below download the XMLTV file and keep programmes for your selected list/group. The provider may still send the full file. M3U-only sources need this manual load for guide data.")
     Field(url, { url = it }, "https://…/xmltv.php?username=…&password=…")
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         PillButton("Speichern & laden", light = true) {
             Xmltv.setCustom(ctx, url)
-            Xmltv.start(ctx, PlaylistStore.epgUrls, PlaylistStore.channels)
+            Xmltv.start(ctx, PlaylistStore.epgUrls, GuideSelection.resolve(PlaylistStore.channels))
         }
-        PillButton("Neu laden") { Xmltv.start(ctx, PlaylistStore.epgUrls, PlaylistStore.channels) }
+        PillButton("Neu laden") { Xmltv.start(ctx, PlaylistStore.epgUrls, GuideSelection.resolve(PlaylistStore.channels)) }
     }
     Spacer(Modifier.height(4.dp))
     Text("Favoriten: ${Library.favs.size} Sender · ${CatFavs.list.size} Kategorien", color = Color.White, fontSize = 17.sp)

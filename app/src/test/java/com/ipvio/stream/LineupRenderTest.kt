@@ -39,6 +39,9 @@ class LineupRenderTest {
         val programmes=field.get(Xmltv) as java.util.concurrent.ConcurrentHashMap<String,List<EpgEntry>>
         val now=System.currentTimeMillis()/1000
         programmes["arena"]=listOf(EpgEntry("Demo match - live","Fictional guide programme for visual testing",now-900,now+2700),EpgEntry("Sports roundup","Fictional next programme",now+2700,now+6300))
+        @Suppress("UNCHECKED_CAST")
+        val shortCache=Epg::class.java.getDeclaredField("cache").apply {isAccessible=true}.get(Epg) as LruCache<String,Pair<Long,List<EpgEntry>>>
+        shortCache[sport.id]=System.currentTimeMillis() to programmes["arena"].orEmpty()
         val ctx=compose.activity
         ChannelLists.init(ctx)
         val id=ChannelLists.create(ctx,"My evening")
@@ -55,6 +58,7 @@ class LineupRenderTest {
         // Sports also exists in sidebar. The group row has its own distinct group panel text parent.
         compose.onAllNodesWithText("Sports",useUnmergedTree=true).onLast().performClick()
         compose.mainClock.advanceTimeBy(500)
+        compose.onAllNodesWithText("Demo match - live",useUnmergedTree=true).onFirst().assertExists()
         snap("03-group-channels")
         compose.onNodeWithText("Back to lineup groups",useUnmergedTree=true).assertExists()
         compose.onAllNodesWithText("Arena One",useUnmergedTree=true).onFirst().assertExists()

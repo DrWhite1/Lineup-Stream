@@ -2,7 +2,17 @@
 
 Notes based on the current codebase (Lineup-Stream fork of IPVIO Stream).
 
-## Current state (relevant parts)
+## Implemented first slice (0.2.2)
+
+- Catalog changes and phone-import updates no longer start XMLTV downloads. Short now/next is requested only by rendered channel UI / the currently playing channel; the full grid uses per-channel data for visible rows and its focused channel.
+- Short EPG uses its cache first, then Xtream, then manually loaded XMLTV as fallback. Duplicate same-channel calls share a fetch; empty results have a 15-second retry cooldown. Transient network/HTTP failures get one retry.
+- Explicit XMLTV load stays in Settings. It keeps the active selection's channel IDs and skips other programme subtrees before reading title/description. It still downloads the full provider file when no filtered endpoint exists. M3U-only providers must use manual XMLTV loading.
+- Existing now/next lines, progress bars, scoped grid and hold-to-scroll protection remain.
+- 359 tests passed including a 10,000-channel synthetic catalog with requests only for two requested channels, no catalog-triggered guide request, cache/dedup/retry, and manual XMLTV filtering.
+
+Not implemented in this slice: conditional XMLTV downloads (ETag/If-Modified-Since), separate periodic guide worker, new timeline UI, provider-side category/day filtering, and R8 changes. The checklist below remains historical suggestions, not a claim that every item is complete.
+
+## Prior state (before 0.2.2)
 
 - Channel rows already show **now + next + progress bar** when data is available (`ChannelLine` in `LiveTab.kt`).
 - Data comes from `Epg.now()` (with a short delay + hold-to-scroll protection so it doesn't thrash while zapping).

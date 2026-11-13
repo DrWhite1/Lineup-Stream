@@ -11,9 +11,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import okhttp3.Request
 import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
@@ -51,24 +53,41 @@ object EpgNet {
     val client = Net.withTimeouts(8, 12)
     val gate = Semaphore(6)
 
+    private val retryCodes=setOf(408,429,500,502,503,504)
     suspend fun fetch(url: String): String? = gate.withPermit {
         withContext(Dispatchers.IO) {
-            try {
-                client.newCall(Request.Builder().url(url).build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
-            } catch (e: Exception) {
-                null
+            repeat(2) { attempt ->
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                try {
+                    client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                        if(r.isSuccessful) return@withContext r.body?.string()
+                        if(r.code !in retryCodes || attempt==1) return@withContext null
+                    }
+                } catch(e:kotlinx.coroutines.CancellationException) { throw e }
+                catch(e:java.io.IOException) { if(attempt==1) return@withContext null }
+                if(attempt==0) kotlinx.coroutines.delay(350)
             }
+            null
         }
     }
+
 }
 
 object Xmltv {
-    var status by mutableStateOf("Noch nicht geladen")
+    var status by mutableStateOf("On-demand EPG; full XMLTV download is manual")
     var channelCount by mutableStateOf(0)
     private val progs = ConcurrentHashMap<String, List<EpgEntry>>()
     private val client = Net.withTimeouts(20, 180)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
+
+    /** Catalog changes never start a full provider XMLTV download. Old data must not leak into another source. */
+    fun onPlaylistChanged() {
+        job?.cancel()
+        progs.clear(); channelCount=0; truncated=false
+        Epg.trim(); EpgFull.trim()
+        status="On-demand EPG; full XMLTV download is manual"
+    }
 
     private fun prefs(c: Context) = c.getSharedPreferences("ipvio_epg", Context.MODE_PRIVATE)
     fun customUrl(c: Context): String = prefs(c).getString("custom", "") ?: ""
@@ -85,6 +104,7 @@ object Xmltv {
     /** [delayMs]: at app start the guide waits a little so the home screen and the playlist get the CPU first. */
     fun start(c: Context, urls: List<String>, items: List<Item>, delayMs: Long = 0L) {
         val all = (urls + listOf(customUrl(c))).filter { it.startsWith("http") }.distinct()
+        job?.cancel()
         if (all.isEmpty()) { status = "Keine EPG-Adresse gefunden"; return }
         val wanted = items.filter { it.kind == Kind.LIVE }.mapNotNull { it.tvgId?.lowercase() }.toSet()
         if (wanted.isEmpty()) { status = "Playlist enthält keine Sender-IDs (tvg-id)"; return }
@@ -103,9 +123,11 @@ object Xmltv {
                 val k = id.lowercase()
                 past[k] = maxOf(past[k] ?: 0, d.coerceAtMost(7))
             }
+            val parseContext=kotlinx.coroutines.currentCoroutineContext()
             for (u in all) {
-                try { parse(u, wanted, map, past) } catch (e: Exception) { err = if (e is PlaylistError) e.message else e.javaClass.simpleName }
+                try { parse(u, wanted, map, past) { parseContext.ensureActive() } } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { err = if (e is PlaylistError) e.message else e.javaClass.simpleName }
             }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             progs.clear()
             for ((k, v) in map) progs[k] = v.sortedBy { it.start }
             channelCount = progs.size
@@ -124,7 +146,7 @@ object Xmltv {
     private fun shortDesc(d: String): String =
         if (d.length <= MAX_DESC) d else d.substring(0, d.lastIndexOf(' ', MAX_DESC).takeIf { it > MAX_DESC / 2 } ?: MAX_DESC) + " …"
 
-    private fun parse(url: String, wanted: Set<String>, out: HashMap<String, MutableList<EpgEntry>>, past: Map<String, Int> = emptyMap()) {
+    internal fun parse(url: String, wanted: Set<String>, out: HashMap<String, MutableList<EpgEntry>>, past: Map<String, Int> = emptyMap(), checkActive:()->Unit = {}) {
         client.newCall(Request.Builder().url(url).build()).execute().use { r ->
             if (!r.isSuccessful) throw PlaylistError("HTTP ${r.code}")
             var ins: InputStream = BufferedInputStream((r.body ?: throw PlaylistError("leer")).byteStream())
@@ -140,8 +162,20 @@ object Xmltv {
             var seen = 0
             var ev = p.eventType
             while (ev != XmlPullParser.END_DOCUMENT) {
+                checkActive()
+                if(Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException()
                 if (ev == XmlPullParser.START_TAG && p.name == "programme") {
                     val ch = p.getAttributeValue(null, "channel")?.lowercase()
+                    if(ch==null || ch !in wanted) {
+                        var depth=1
+                        while(depth>0 && p.next()!=XmlPullParser.END_DOCUMENT) {
+                            checkActive()
+                            if(p.eventType==XmlPullParser.START_TAG) depth++
+                            else if(p.eventType==XmlPullParser.END_TAG) depth--
+                        }
+                        ev=p.next()
+                        continue
+                    }
                     val s = parseTime(p.getAttributeValue(null, "start"))
                     val e = parseTime(p.getAttributeValue(null, "stop"))
                     var title = ""
@@ -181,17 +215,25 @@ class LruCache<K, V>(private val max: Int) {
 }
 
 object Epg {
+    private val requestLocks=Array(64) { kotlinx.coroutines.sync.Mutex() }
     private val cache = LruCache<String, Pair<Long, List<EpgEntry>>>(400)
     fun trim() = cache.clear()
-    private val LIVE_RE = Regex("""^(https?://[^/]+)/(?:live/)?([^/]+)/([^/]+)/(\d+)(?:\.\w+)?(?:\?.*)?$""")
-
-    fun supported(item: Item): Boolean = LIVE_RE.matches(item.url) || Xmltv.has(item.tvgId)
-
-    /** Address of the Xtream program query [action] for a channel or null if the channel has no Xtream address. */
+    /** Xtream channel URL, including installations under a server subdirectory. Raw path preserves encoded credentials. */
     internal fun xtreamApi(item: Item, action: String): String? {
-        val p = LIVE_RE.find(item.url)?.groupValues ?: return null
-        return "${p[1]}/player_api.php?username=${p[2]}&password=${p[3]}&action=$action&stream_id=${p[4]}"
+        val u=runCatching { java.net.URI(item.url) }.getOrNull() ?: return null
+        if(u.scheme !in listOf("http","https") || u.rawAuthority==null) return null
+        val path=u.rawPath.orEmpty()
+        val marker=path.lastIndexOf("/live/")
+        val tail=if(marker>=0) path.substring(marker+6) else path.removePrefix("/")
+        val parts=tail.split('/')
+        if(parts.size!=3) return null
+        val id=parts[2].substringBefore('.')
+        if(id.isEmpty() || !id.all { it.isDigit() }) return null
+        val prefix=if(marker>=0) path.substring(0,marker) else ""
+        return "${u.scheme}://${u.rawAuthority}$prefix/player_api.php?username=${parts[0]}&password=${parts[1]}&action=$action&stream_id=$id"
     }
+
+    fun supported(item: Item): Boolean = xtreamApi(item,"get_short_epg")!=null || Xmltv.has(item.tvgId)
 
     /** Xtream delivers title and description Base64-encoded, but some providers in plain text. */
     private fun decode(s: String): String {
@@ -222,18 +264,18 @@ object Epg {
         return out
     }
 
-    /** Running and upcoming shows of a channel. Order: cache, loaded XMLTV (immediately), then Xtream query. */
-    suspend fun now(item: Item): List<EpgEntry> {
+    /** Running/upcoming shows: cache, on-demand Xtream short EPG, manually loaded XMLTV fallback. */
+    suspend fun now(item: Item): List<EpgEntry> = requestLocks[(item.id.hashCode() and Int.MAX_VALUE)%requestLocks.size].withLock {
         val nowMs = System.currentTimeMillis()
         val nowSec = nowMs / 1000
-        cache[item.id]?.let { if (nowMs - it.first < 120_000) return it.second }
+        cache[item.id]?.let { if (nowMs - it.first < (if(it.second.isEmpty()) 15_000 else 120_000)) return@withLock it.second }
         // Everything below (XMLTV filter, JSON parsing, Base64) runs off the main thread, whoever calls this
-        return withContext(Dispatchers.Default) { nowFresh(item, nowMs, nowSec) }
+        withContext(Dispatchers.Default) { nowFresh(item, nowMs, nowSec) }.also { cache[item.id]=nowMs to it }
     }
 
     private suspend fun nowFresh(item: Item, nowMs: Long, nowSec: Long): List<EpgEntry> {
         val local = Xmltv.forChannel(item.tvgId).filter { it.end > nowSec }
-        if (local.isNotEmpty() && current(local) != null) return local.take(8).also { cache[item.id] = nowMs to it }
+        // Xtream short EPG takes priority; a manually loaded XMLTV guide is fallback, not a startup dependency.
         val url = xtreamApi(item, "get_short_epg")
         if (url != null) {
             val body = EpgNet.fetch("$url&limit=8")
@@ -242,13 +284,13 @@ object Epg {
                 if (out.isNotEmpty()) { cache[item.id] = nowMs to out; return out }
             }
         }
-        return local.take(8)
+        return local.take(8).also { if(it.isNotEmpty()) cache[item.id]=nowMs to it }
     }
 
     /** Cached result of [now] if it is still fresh, without any lookup or network (cheap enough for composition). */
     fun peek(item: Item): List<EpgEntry>? {
         val c = cache[item.id] ?: return null
-        return if (System.currentTimeMillis() - c.first < 120_000) c.second else null
+        return if (System.currentTimeMillis() - c.first < (if(c.second.isEmpty()) 15_000 else 120_000)) c.second else null
     }
 
     fun current(list: List<EpgEntry>): EpgEntry? {

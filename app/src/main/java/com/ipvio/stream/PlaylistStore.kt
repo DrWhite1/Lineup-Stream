@@ -941,7 +941,7 @@ object PlaylistStore {
         Catchup.startAll(c, listOf(u to primaryItems) + ex.map { it.first to it.second.items })
         // Only refetch the TV guide if addresses or channels have changed
         val es = epg.hashCode().toLong() * 31 + sig(vis.filter { it.kind == Kind.LIVE })
-        if (es != epgSig) { val first = epgSig == 0L; epgSig = es; Xmltv.start(c, epg, vis, if (first) 6_000L else 0L) }
+        if (es != epgSig) { epgSig = es; Xmltv.onPlaylistChanged() }
     }
 
     private fun restartCatchup(c: Context) {

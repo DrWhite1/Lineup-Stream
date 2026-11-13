@@ -2,6 +2,12 @@
 
 An independent GPL-3.0 fork of [IPVIO Stream](https://github.com/Emrodev/IPVIO-Stream) by its contributors. Not an official IPVIO release and not endorsed by upstream. Original code, font licenses and third-party notices remain in this source tree. See LICENSE.
 
+## 0.2.2 on-demand EPG
+
+Playlist loading/refresh no longer starts full XMLTV downloads, including for M3U sources. Xtream now/next is loaded on demand by rendered channel UI and the playing channel, with cache reuse, same-channel request deduplication, a short empty-result cooldown and one retry for transient failures. The scoped grid and its per-channel programme queries are unchanged.
+
+For M3U/custom XMLTV, select your group/list and use Settings > Live TV > XMLTV Save & load / Reload. This is an explicit full-file download; only the selected channels' programmes are kept. Providers without per-channel APIs will not show guide data until that manual load. The parser skips unrelated programme subtrees before building strings. No ETag cache or independent refresh worker yet. Guide data remains provider-dependent.
+
 ## 0.2.1 follow-up
 
 - App-wide and Live TV guide routes preserve the selected list/group instead of resetting to ALL. The player guide and its search cannot widen to unrelated provider channels. An explicitly selected All channels list still means all channels; without a prior choice the guide starts with the first provider group, not the full catalog.

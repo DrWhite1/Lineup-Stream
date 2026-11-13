@@ -1,3 +1,12 @@
+# 0.2.2 validation
+
+- assembleDebug and testDebugUnitTest passed. 359 tests, zero failures/errors/skips.
+- Mock-provider tests: catalog-change handler makes zero requests with a 10,000-channel synthetic catalog; only two requested channels call get_short_epg; duplicate calls share cache/fetch; one simulated HTTP 503 is retried; HTTP 403 uses a brief empty-result cache; no XMLTV request is triggered by API failure.
+- Manual XMLTV parser test skips 5,000 unrelated programme subtrees and retains only the requested channel. Nested irrelevant title markup is skipped without extracting its text.
+- Verified nested Xtream base paths and percent-encoded credentials are preserved. No real provider credentials were used.
+- Re-rendered/inspected actual group/channel and scoped-guide UI. Layout unchanged; demo programmes fictional. Source inspection confirms only the explicit Settings XMLTV buttons call Xmltv.start.
+- Same debug package/signing certificate, versionCode 9. No clean-lint claim; actual provider/TV acceptance remains necessary.
+
 # 0.2.1 validation
 
 - assembleDebug passed; 355 tests passed with zero failures/errors/skips, including guide scope resolution, removed-channel no-ALL-fallback, route checks, scoped guide/time navigation renders and European football feed/EPG tests.

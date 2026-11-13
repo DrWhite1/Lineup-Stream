@@ -2,8 +2,10 @@ package com.ipvio.stream
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 
 object EpgFull {
+    private val requestLocks=Array(64) { kotlinx.coroutines.sync.Mutex() }
     private val cache = LruCache<String, Pair<Long, List<EpgEntry>>>(300)
     fun trim() = cache.clear()
 
@@ -11,18 +13,18 @@ object EpgFull {
      * Program of a channel: from 1 h back, for channels with archive (catchup) as far back as the archive reaches.
      * First cache and loaded XMLTV (without network), then Xtream.
      */
-    suspend fun get(item: Item): List<EpgEntry> {
+    suspend fun get(item: Item): List<EpgEntry> = requestLocks[(item.id.hashCode() and Int.MAX_VALUE)%requestLocks.size].withLock {
         val nowMs = System.currentTimeMillis()
         val nowSec = nowMs / 1000
-        cache[item.id]?.let { if (nowMs - it.first < 600_000) return it.second }
+        cache[item.id]?.let { if (nowMs - it.first < (if(it.second.isEmpty()) 15_000 else 600_000)) return@withLock it.second }
         // The full program table can hold days of shows: parsing and Base64 decoding run off the main thread, whoever calls this
-        return withContext(Dispatchers.Default) { getFresh(item, nowMs, nowSec) }
+        withContext(Dispatchers.Default) { getFresh(item, nowMs, nowSec) }.also { cache[item.id]=nowMs to it }
     }
 
     /** Cached program if still fresh, without lookup or network (cheap enough for composition). */
     fun peek(item: Item): List<EpgEntry>? {
         val c = cache[item.id] ?: return null
-        return if (System.currentTimeMillis() - c.first < 600_000) c.second else null
+        return if (System.currentTimeMillis() - c.first < (if(c.second.isEmpty()) 15_000 else 600_000)) c.second else null
     }
 
     private suspend fun getFresh(item: Item, nowMs: Long, nowSec: Long): List<EpgEntry> {
