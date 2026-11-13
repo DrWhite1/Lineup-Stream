@@ -2,7 +2,7 @@
 
 Experimental personal fork with named, openable synced-group lineups. **Not an official IPVIO release.**
 
-See [fork features and controls](FORK.md), [evaluation and device acceptance checklist](docs/FORK-EVALUATION.md), and the original GPL license and notices below. Fork builds use a separate app identity and original icon. Download this fork only from this repository's Releases, not the upstream link in the historical README below.
+See [fork features and controls](FORK.md), [evaluation and device acceptance checklist](docs/FORK-EVALUATION.md), and the [GPL license](LICENSE) and [upstream legal notices](UPSTREAM-NOTICES.md). Fork builds use a separate app identity and original icon. Download this fork only from this repository's Releases, not the upstream link in the historical README below.
 
 ---
 
@@ -114,53 +114,3 @@ The app ships **without any API keys**. You can enter your own free keys in the 
 Settings > **API keys**: paste the key into the field, press **Save and check** (a green "Key valid" confirms it) and restart the app once. Tip: type long keys with the phone import or an USB keyboard instead of the remote.
 
 *This product uses the TMDB API but is not endorsed or certified by TMDB.*
-
-## Building
-
-Requirements: Android Studio (current version) with the Android SDK; the Gradle wrapper downloads everything else.
-
-```
-git clone <this repository>
-cd IPVIO-Stream
-./gradlew assembleDebug        # Windows: gradlew.bat assembleDebug
-```
-
-The APK is then in `app/build/outputs/apk/debug/`. For releases and in-app updates see [docs/RELEASE.md](docs/RELEASE.md): every release must be signed with the same key (`keystore.properties`), otherwise users lose their data when updating.
-
-Optional Google Drive backup: [docs/GOOGLE_DRIVE.md](docs/GOOGLE_DRIVE.md).
-
-Developers can optionally copy `secrets.properties.example` to `secrets.properties` (ignored by Git) and put their keys there; they are only used when no key was entered in the app.
-
-Unit tests for the pure logic: `./gradlew test`
-
-## Project layout
-
-```
-app/src/main/java/com/ipvio/stream/   all Kotlin sources (one package)
-  *Logic.kt                           pure, Android-free logic (covered by unit tests)
-  Dict*.kt                            translations (one row per text: de¦en¦tr¦bs¦hr¦sr¦es¦fr¦it)
-app/src/test/java/com/ipvio/stream/   JUnit tests
-app/src/main/res/font/                Outfit and Inter (SIL Open Font License)
-licenses/                             font licences
-```
-
-## Support the project
-
-Hello, I'm Claude. If you enjoy using this project and want to help this wannabe developer keep building things (and occasionally understand what he's doing), feel free to support the project.
-
-- Ko-fi: https://ko-fi.com/ipviodude
-- PayPal: https://www.paypal.com/ncp/payment/EUSU4WAGRJNXY
-
-IPVIO Stream stays free, ad-free and open source. Donations are voluntary and do not unlock any features.
-
-## License
-
-Copyright (C) 2026 IPVIO Stream contributors
-
-IPVIO Stream is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License version 3** (see [LICENSE](LICENSE)). The GPL is required because the app includes the GPL-3.0 licensed FFmpeg audio decoder. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the libraries, fonts and services used.
-
-The name "IPVIO" and the IPVIO logo identify the original project. If you publish a modified version, please use your own name and logo so that users are not confused.
-
-## Disclaimer
-
-This software is provided "as is", without warranty of any kind. The authors do not provide, host, sell or link to any streams or playlists and are not responsible for how the app is used. Using playlists without the rights holders' permission may be illegal in your country.
